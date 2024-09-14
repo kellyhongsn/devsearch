@@ -9,9 +9,7 @@ const SERPER_API_KEY = process.env.SERPER_API_KEY;
 const EXA_API_KEY = process.env.EXA_API_KEY;
 
 if (!SERPER_API_KEY || !EXA_API_KEY) {
-  throw new Error(
-    'SERPER_API_KEY and EXA_API_KEY must be set in environment variables',
-  );
+  throw new Error('SERPER_API_KEY and EXA_API_KEY must be set in environment variables');
 }
 
 const exa = new Exa(EXA_API_KEY);

@@ -12,13 +12,17 @@
   "activationEvents": [],
   "main": "./src/extension.js",
   "contributes": {
-    "commands": [{
-      "command": "id-devsearch.helloWorld",
-      "title": "Hello World"
-    }]
+    "commands": [
+      {
+        "command": "id-devsearch.helloWorld",
+        "title": "Hello World"
+      }
+    ]
   },
   "scripts": {
     "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
     "pretest": "npm run lint",
     "test": "vscode-test"
   },
@@ -27,6 +31,9 @@
     "@types/mocha": "^10.0.7",
     "@types/node": "20.x",
     "eslint": "^9.9.1",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.1.3",
+    "prettier": "^3.2.5",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1"
   },
