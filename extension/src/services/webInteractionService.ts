@@ -1,22 +1,26 @@
 import { OpenAI } from 'openai';
 import { scrapeAndScreenshot } from './scrapeService.js';
 import axios from 'axios';
-import dotenv from 'dotenv';
+import { ExtensionContext } from 'vscode';
+import { ScrapeResult } from './scrapeService.js';
 
-dotenv.config();
+async function performWebAction(
+  context: ExtensionContext,
+  url: string,
+  query: string
+): Promise<ScrapeResult> {
+  const apiKey = await context.secrets.get('OPENAI_API_KEY');
+  const client = new OpenAI({
+    apiKey: apiKey,
+  });
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-async function performWebAction(url, query) {
   try {
     // Fetch the HTML content of the page
     const response = await axios.get(url);
     const html = response.data;
 
     // Use GPT-4 to find the relevant link
-    const linkUrl = await findLinkWithGPT(html, query);
+    const linkUrl = await findLinkWithGPT(html, query, client);
 
     if (!linkUrl) {
       throw new Error('No relevant link found');
@@ -26,10 +30,10 @@ async function performWebAction(url, query) {
     const fullUrl = new URL(linkUrl, url).href;
 
     // Use scrapeAndScreenshot to get the screenshot
-    const screenshot = await scrapeAndScreenshot([{ id: 1, link: fullUrl }]);
+    const screenshot = await scrapeAndScreenshot([{ id: 1, link: fullUrl, title: '', text: '' }]);
 
     return {
-      newUrl: fullUrl,
+      link: fullUrl,
       screenshot: screenshot[0].screenshot,
     };
   } catch (error) {
@@ -38,7 +42,7 @@ async function performWebAction(url, query) {
   }
 }
 
-async function findLinkWithGPT(html, query) {
+async function findLinkWithGPT(html: string, query: string, client: OpenAI): Promise<string> {
   const prompt = `Given the following HTML and user query, find the most relevant link (href attribute) that matches the query. Only return the href value, nothing else.
 
   HTML:
@@ -58,19 +62,16 @@ async function findLinkWithGPT(html, query) {
   console.log(response.choices[0]);
 
   // Clean up the URL
-  let url = response.choices[0].message.content.trim();
+  let url = response.choices[0].message.content?.trim() || '';
   url = url.replace(/^["']|["']$/g, ''); // Remove leading and trailing quotes
   url = url.replace(/\\"/g, ''); // Remove escaped quotes
 
   return url;
 }
 
-function parseAction(actionString) {
+function parseAction(actionString: string): string {
   // This function is no longer needed, but kept for backwards compatibility
   return actionString;
 }
 
-module.exports = {
-  performWebAction,
-  parseAction
-};
+export { performWebAction };

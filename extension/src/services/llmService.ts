@@ -1,17 +1,28 @@
-import dotenv from 'dotenv';
-import { OpenAI } from 'openai';
 import fs from 'fs/promises';
 import { createReadStream } from 'fs';
 import path from 'path';
 
-dotenv.config();
+import { ExtensionContext } from 'vscode';
+import { OpenAI } from 'openai';
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+interface File {
+  originalname: string;
+  buffer: Buffer;
+  size: number;
+}
+
+interface Screenshot {
+  id?: number;
+  link: string;
+  screenshot: string;
+}
+
+async function getAPIKey(context: ExtensionContext, keyName: string): Promise<string> {
+  return (await context.secrets.get(keyName)) || '';
+}
 
 // Upload files to vector store and return vector store ID
-async function uploadFilesToVectorStore(files) {
+async function uploadFilesToVectorStore(files: File[], client: OpenAI): Promise<string> {
   try {
     const uploadedFiles = await Promise.all(
       files.map(async (file) => {
@@ -50,7 +61,10 @@ async function uploadFilesToVectorStore(files) {
   }
 }
 
-async function createThreadWithSearchResults(userQuery) {
+async function createThreadWithSearchResults(
+  userQuery: string,
+  client: OpenAI
+): Promise<OpenAI.Beta.Threads.Thread> {
   const thread = await client.beta.threads.create({
     messages: [
       {
@@ -63,7 +77,11 @@ async function createThreadWithSearchResults(userQuery) {
   return thread;
 }
 
-async function runAssistantAndGetAnalysis(assistantId, threadId) {
+async function runAssistantAndGetAnalysis(
+  assistantId: string,
+  threadId: string,
+  client: OpenAI
+): Promise<string> {
   const stream = client.beta.threads.runs.stream(threadId, {
     assistant_id: assistantId,
     instructions:
@@ -100,7 +118,13 @@ user's query.",
   });
 }
 
-async function analyzeLLMInput(userQuery, files) {
+async function analyzeLLMInput(
+  context: ExtensionContext,
+  userQuery: string,
+  files: File[]
+): Promise<string> {
+  const apiKey = await getAPIKey(context, 'OPENAI_API_KEY');
+  const client = new OpenAI({ apiKey });
   try {
     // Step 1: Create an assistant with file search
     const assistant = await client.beta.assistants.create({
@@ -112,7 +136,7 @@ async function analyzeLLMInput(userQuery, files) {
     console.log('Assistant created:', assistant.id);
 
     // Step 2: Upload the code and package files to the vector store
-    const vectorStoreId = await uploadFilesToVectorStore(files);
+    const vectorStoreId = await uploadFilesToVectorStore(files, client);
     console.log('Vector Store created:', vectorStoreId);
 
     // Step 3: Update the assistant to use the new Vector Store
@@ -122,11 +146,11 @@ async function analyzeLLMInput(userQuery, files) {
     console.log('Assistant updated with vector store');
 
     // Step 4: Create a thread and attach the search results
-    const thread = await createThreadWithSearchResults(userQuery);
+    const thread = await createThreadWithSearchResults(userQuery, client);
     console.log('Thread ID: ', thread.id);
 
     // Step 5: Run the assistant and get the useful results
-    const analysis = await runAssistantAndGetAnalysis(assistant.id, thread.id);
+    const analysis = await runAssistantAndGetAnalysis(assistant.id, thread.id, client);
 
     return analysis;
   } catch (error) {
@@ -135,8 +159,16 @@ async function analyzeLLMInput(userQuery, files) {
   }
 }
 
-async function queryLLMResponse(userQuery, analysis, screenshots, initialResponse = null) {
-  let systemMessage;
+async function queryLLMResponse(
+  context: ExtensionContext,
+  userQuery: string,
+  analysis: string,
+  screenshots: Screenshot[],
+  initialResponse: string | null = null
+): Promise<{ queryResponse: string; extractedActions: string }> {
+  const apiKey = await getAPIKey(context, 'OPENAI_API_KEY');
+  const client = new OpenAI({ apiKey });
+  let systemMessage: string;
   let textMessage = `User Query:${userQuery}\n\nAnalysis: ${analysis}\n\n`;
   if (initialResponse) {
     systemMessage =
@@ -159,7 +191,7 @@ async function queryLLMResponse(userQuery, analysis, screenshots, initialRespons
                 Then, if more information is needed and it is clear where to find it based on the images, \
                 suggest specific actions to take. ";
   console.log('System Message: ', systemMessage);
-  const messages = [
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     {
       role: 'system',
       content: systemMessage,
@@ -175,12 +207,14 @@ async function queryLLMResponse(userQuery, analysis, screenshots, initialRespons
                 If more information is needed and it is clear where to find it based on the images, \
                 suggest specific actions to take.`,
         },
-        ...screenshots.map((screenshot) => ({
-          type: 'image_url',
-          image_url: {
-            url: `data:image/jpeg;base64,${screenshot.screenshot}`,
-          },
-        })),
+        ...screenshots.map(
+          (screenshot): OpenAI.Chat.ChatCompletionContentPart => ({
+            type: 'image_url',
+            image_url: {
+              url: `data:image/jpeg;base64,${screenshot.screenshot}`,
+            },
+          })
+        ),
       ],
     },
   ];
@@ -191,15 +225,14 @@ async function queryLLMResponse(userQuery, analysis, screenshots, initialRespons
     max_tokens: 2000,
   });
 
-  const queryResponse = response.choices[0].message.content;
-
-  const extractedActions = separateOutput(queryResponse);
+  const queryResponse = response.choices[0].message.content || '';
+  const extractedActions = await separateOutput(queryResponse, client);
 
   return { queryResponse: queryResponse, extractedActions: extractedActions };
 }
 
 // another function to separate addtional queries
-async function separateOutput(output) {
+async function separateOutput(output: string, client: OpenAI): Promise<string> {
   try {
     const prompt = `Extract the action queries from the following text (phrases like "Click on 'Getting Started' button" or "Go to 'About' link") and return them each separated by a new line:\n\n"${output}"`;
 
@@ -212,7 +245,7 @@ async function separateOutput(output) {
     });
 
     // Extract the content from the GPT response
-    const actionQueries = response.choices[0].message.content.trim();
+    const actionQueries = response.choices[0].message.content?.trim() || '';
 
     return actionQueries;
   } catch (error) {
@@ -221,7 +254,4 @@ async function separateOutput(output) {
   }
 }
 
-module.exports = {
-  analyzeLLMInput,
-  queryLLMResponse
-};
+export { analyzeLLMInput, queryLLMResponse };

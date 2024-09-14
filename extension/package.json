@@ -10,7 +10,7 @@
     "Other"
   ],
   "activationEvents": [],
-  "main": "./src/test.js",
+  "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
@@ -37,6 +37,9 @@
     ]
   },
   "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -46,19 +49,20 @@
   "devDependencies": {
     "@types/mocha": "^10.0.7",
     "@types/node": "20.x",
-    "@types/vscode": "^1.93.0",
-    "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.4.1",
-    "eslint": "^9.9.1",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.1.3",
-    "prettier": "^3.2.5"
+    "prettier": "^3.2.5",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "typescript": "^5.4.5"
   },
   "dependencies": {
     "axios": "^1.7.7",
-    "dotenv": "^16.4.5",
-    "exa-js": "^1.1.2",
-    "openai": "^4.61.0",
+    "exa-js": "^1.0.14",
+    "openai": "^4.58.1",
     "puppeteer": "^23.3.0"
   }
 }
