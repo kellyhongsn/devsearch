@@ -1,6 +1,6 @@
 {
-  "name": "extension",
-  "displayName": "devsearch",
+  "name": "devsearch",
+  "displayName": "DevSearch",
   "description": "dev assistant for tasks beyond coding",
   "version": "0.0.1",
   "engines": {
@@ -12,10 +12,29 @@
   "activationEvents": [],
   "main": "./src/extension.js",
   "contributes": {
-    "commands": [{
-      "command": "id-devsearch.helloWorld",
-      "title": "Hello World"
-    }]
+    "commands": [
+      {
+        "command": "devsearch.openSidePanel",
+        "title": "Open DevSearch Side Panel"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "type": "webview",
+          "id": "devsearch.sidePanelView",
+          "name": "DevSearch"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "devsearch.openSidePanel",
+        "key": "cmd+d",
+        "mac": "cmd+d",
+        "when": "editorTextFocus"
+      }
+    ]
   },
   "scripts": {
     "lint": "eslint .",
