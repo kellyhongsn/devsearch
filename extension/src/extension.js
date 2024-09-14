@@ -1,121 +1,103 @@
-const vscode = require('vscode');
-
-function activate(context) {
-    console.log('DevSearch extension is now active!');
-
-    const provider = new SidePanelViewProvider(context.extensionUri);
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider('devsearch.sidePanelView', provider)
-    );
-    let disposable = vscode.commands.registerCommand('devsearch.openSidePanel', async () => {
-        await vscode.commands.executeCommand('workbench.view.explorer');
-        await vscode.commands.executeCommand('devsearch.sidePanelView.focus');
-    });
-
-    context.subscriptions.push(disposable);
-}
-
-class SidePanelViewProvider {
-    constructor(extensionUri) {
-        this._extensionUri = extensionUri;
-    }
-
-    resolveWebviewView(webviewView, context, _token) {
-        webviewView.webview.options = {
-            enableScripts: true,
-            localResourceRoots: [this._extensionUri]
-        };
-
-        webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
-
-        webviewView.webview.onDidReceiveMessage(data => {
-            switch (data.type) {
-                case 'textEntered':
-                    vscode.window.showInformationMessage(`You entered: ${data.value}`);
-                    break;
-            }
-        });
-    }
-    _getHtmlForWebview(webview) {
-        const nonce = getNonce();
-    
-        return `<!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
-            <title>DevSearch</title>
-        </head>
-        <body>
-            <input type="text" id="textInput" placeholder="Enter text here">
-            <button id="submitButton">Submit</button>
-            <div id="output"></div>
-            <script nonce="${nonce}">
-                const vscode = acquireVsCodeApi();
-                const textInput = document.getElementById('textInput');
-                const submitButton = document.getElementById('submitButton');
-                const output = document.getElementById('output');
-    
-                submitButton.addEventListener('click', () => {
-                    const text = textInput.value;
-                    vscode.postMessage({ type: 'textEntered', value: text });
-                    output.textContent = 'You entered: ' + text;
-                });
-            </script>
-        </body>
-        </html>`;
-    }
-    
-}
-
-function getNonce() {
-    let text = '';
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    for (let i = 0; i < 32; i++) {
-        text += possible.charAt(Math.floor(Math.random() * possible.length));
-    }
-    return text;
-}
-
-function deactivate() {}
-
-module.exports = {
-    activate,
-    deactivate
-}
-
-/*// The module 'vscode' contains the VS Code extensibility API
+// The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 const vscode = require('vscode');
+const path = require('path');
 const llmService = require('./services/llmService');
 const scrapeService = require('./services/scrapeService');
 const webInteractionService = require('./services/webInteractionService');
 const webRetrievalService = require('./services/webRetrievalService');
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
+let outputChannel;
 
 /**
  * @param {vscode.ExtensionContext} context
  */
-/*function activate(context) {
-
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
+function activate(context) {
 	console.log('Congratulations, your extension devsearch is now active!');
+	outputChannel = vscode.window.createOutputChannel("DevSearch");
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with  registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('extension.helloWorld', function () {
-		// The code you place here will be executed every time your command is executed
+	let disposable = vscode.commands.registerCommand('devsearch.query', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            vscode.window.showErrorMessage('No active editor!');
+            return;
+        }
 
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from devsearch!');
+        const query = await vscode.window.showInputBox({ prompt: 'Enter your query' });
+        if (!query) return;
+
+        outputChannel.appendLine(`Processing query: ${query}`);
+        outputChannel.show();
+
+		try {
+            // Step 1: Analyze code and perform web search
+            const [analysis, searchResults] = await Promise.all([
+                analyzeCode(query),
+                performWebSearch(query)
+            ]);
+
+            // Step 2: Get screenshots
+            const screenshots = await getScreenshots(searchResults);
+
+            // Step 3: Query LLM for initial response
+            const { queryResponse, extractedActions } = await queryLLM(query, analysis, screenshots);
+
+            // Step 4: Perform extracted actions
+            const newScreenshots = await performActions(extractedActions);
+
+            // Step 5: Final LLM query with new context
+            const finalResponse = await queryLLM(query, analysis, newScreenshots, queryResponse);
+
+            // Display final response
+            outputChannel.appendLine(`Final Response: ${finalResponse.queryResponse}`);
+        } catch (error) {
+            vscode.window.showErrorMessage(`Error: ${error.message}`);
+        }
 	});
-
 	context.subscriptions.push(disposable);
+}
+
+async function analyzeCode(query) {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) throw new Error('No active editor');
+
+    const document = editor.document;
+    const fileContent = document.getText();
+    const fileName = path.basename(document.fileName);
+
+    const files = [{
+        originalname: fileName,
+        buffer: Buffer.from(fileContent),
+        size: fileContent.length
+    }];
+
+    return llmService.analyzeLLMInput(query, files);
+}
+
+async function performWebSearch(query) {
+    return webRetrievalService.getCombinedSearchResults(query);
+}
+
+async function getScreenshots(searchResults) {
+    return scrapeService.scrapeAndScreenshot(searchResults);
+}
+
+async function queryLLM(query, analysis, screenshots, initialResponse = null) {
+    return llmService.queryLLMResponse(query, analysis, screenshots, initialResponse);
+}
+
+async function performActions(actions) {
+    const actionList = actions.split('\n');
+    const screenshots = [];
+
+    for (const action of actionList) {
+        if (action.trim()) {
+            const result = await webInteractionService.performWebAction('', action);
+            screenshots.push(result);
+        }
+    }
+
+    return screenshots;
 }
 
 // This method is called when your extension is deactivated
@@ -123,6 +105,5 @@ function deactivate() {}
 
 module.exports = {
 	activate,
-	deactivate
-}
-*/
+	deactivate,
+};

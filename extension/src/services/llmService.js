@@ -15,9 +15,7 @@ async function uploadFilesToVectorStore(files) {
   try {
     const uploadedFiles = await Promise.all(
       files.map(async (file) => {
-        console.log(
-          `Processing file: ${file.originalname}, Size: ${file.size} bytes`,
-        );
+        console.log(`Processing file: ${file.originalname}, Size: ${file.size} bytes`);
 
         const tempFilePath = path.join('/tmp', file.originalname);
         await fs.writeFile(tempFilePath, file.buffer);
@@ -30,7 +28,7 @@ async function uploadFilesToVectorStore(files) {
 
         console.log(`File uploaded: ${uploadedFile.id}`);
         return uploadedFile.id;
-      }),
+      })
     );
 
     console.log('All files uploaded successfully');
@@ -102,13 +100,12 @@ user's query.",
   });
 }
 
-export async function analyzeLLMInput(userQuery, files) {
+async function analyzeLLMInput(userQuery, files) {
   try {
     // Step 1: Create an assistant with file search
     const assistant = await client.beta.assistants.create({
       name: 'Code Query Assistant',
-      instructions:
-        'Analyze the content of code files in relation to a user query',
+      instructions: 'Analyze the content of code files in relation to a user query',
       model: 'gpt-4o',
       tools: [{ type: 'file_search' }],
     });
@@ -138,12 +135,7 @@ export async function analyzeLLMInput(userQuery, files) {
   }
 }
 
-export async function queryLLMResponse(
-  userQuery,
-  analysis,
-  screenshots,
-  initialResponse = null,
-) {
+async function queryLLMResponse(userQuery, analysis, screenshots, initialResponse = null) {
   let systemMessage;
   let textMessage = `User Query:${userQuery}\n\nAnalysis: ${analysis}\n\n`;
   if (initialResponse) {
@@ -228,3 +220,8 @@ async function separateOutput(output) {
     throw error;
   }
 }
+
+module.exports = {
+  analyzeLLMInput,
+  queryLLMResponse
+};

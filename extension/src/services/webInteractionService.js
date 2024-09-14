@@ -9,7 +9,7 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-export async function performWebAction(url, query) {
+async function performWebAction(url, query) {
   try {
     // Fetch the HTML content of the page
     const response = await axios.get(url);
@@ -65,7 +65,12 @@ async function findLinkWithGPT(html, query) {
   return url;
 }
 
-export function parseAction(actionString) {
+function parseAction(actionString) {
   // This function is no longer needed, but kept for backwards compatibility
   return actionString;
 }
+
+module.exports = {
+  performWebAction,
+  parseAction
+};
