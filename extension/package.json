@@ -10,7 +10,7 @@
     "Other"
   ],
   "activationEvents": [],
-  "main": "./extension.js",
+  "main": "./src/extension.js",
   "contributes": {
     "commands": [{
       "command": "id-devsearch.helloWorld",
@@ -29,5 +29,9 @@
     "eslint": "^9.9.1",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "openai": "^4.5.0"
   }
 }
