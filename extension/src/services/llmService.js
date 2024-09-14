@@ -100,7 +100,7 @@ user's query.",
   });
 }
 
-export async function analyzeLLMInput(userQuery, files) {
+async function analyzeLLMInput(userQuery, files) {
   try {
     // Step 1: Create an assistant with file search
     const assistant = await client.beta.assistants.create({
@@ -135,7 +135,7 @@ export async function analyzeLLMInput(userQuery, files) {
   }
 }
 
-export async function queryLLMResponse(userQuery, analysis, screenshots, initialResponse = null) {
+async function queryLLMResponse(userQuery, analysis, screenshots, initialResponse = null) {
   let systemMessage;
   let textMessage = `User Query:${userQuery}\n\nAnalysis: ${analysis}\n\n`;
   if (initialResponse) {
@@ -220,3 +220,8 @@ async function separateOutput(output) {
     throw error;
   }
 }
+
+module.exports = {
+  analyzeLLMInput,
+  queryLLMResponse
+};

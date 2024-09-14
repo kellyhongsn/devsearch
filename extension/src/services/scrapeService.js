@@ -14,8 +14,7 @@ import puppeteer from 'puppeteer';
  */
 
 //takes in searchResults array, gets the links, and takes screenshot of entire page
-
-export async function scrapeAndScreenshot(searchResults) {
+async function scrapeAndScreenshot(searchResults) {
   const browser = await puppeteer.launch();
   const results = [];
 
@@ -59,3 +58,7 @@ export async function scrapeAndScreenshot(searchResults) {
   await browser.close();
   return results;
 }
+
+module.exports = {
+  scrapeAndScreenshot,
+};

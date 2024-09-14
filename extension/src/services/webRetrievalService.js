@@ -14,7 +14,7 @@ if (!SERPER_API_KEY || !EXA_API_KEY) {
 
 const exa = new Exa(EXA_API_KEY);
 
-export async function getGoogleResults(query) {
+async function getGoogleResults(query) {
   const config = {
     method: 'post',
     url: 'https://google.serper.dev/search',
@@ -39,7 +39,7 @@ export async function getGoogleResults(query) {
   }
 }
 
-export async function getExaResults(query) {
+async function getExaResults(query) {
   try {
     const result = await exa.searchAndContents(query, {
       type: 'auto',
@@ -59,7 +59,7 @@ export async function getExaResults(query) {
   }
 }
 
-export async function getCombinedSearchResults(query) {
+async function getCombinedSearchResults(query) {
   try {
     const [googleResults, exaResults] = await Promise.all([
       getGoogleResults(query),
@@ -72,3 +72,9 @@ export async function getCombinedSearchResults(query) {
     throw error;
   }
 }
+
+module.exports = {
+  getCombinedSearchResults,
+  getExaResults,
+  getGoogleResults
+};
