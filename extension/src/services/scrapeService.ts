@@ -1,22 +1,23 @@
 import puppeteer from 'puppeteer';
 
-/**
- * @typedef {Object} SearchQueryResult
- * @property {number} id
- * @property {string} title
- * @property {string} link
- * @property {string} text
- */
+interface SearchQueryResult {
+  id: number;
+  title: string;
+  link: string;
+  text: string;
+}
 
-/**
- * @param {SearchQueryResult[]} searchResults
- * @returns {Promise<Array<{id: number, link: string, screenshot: string}>>}
- */
+interface ScrapeResult {
+  id?: number;
+  link: string;
+  screenshot: string;
+  error?: string;
+}
 
 //takes in searchResults array, gets the links, and takes screenshot of entire page
-async function scrapeAndScreenshot(searchResults) {
+async function scrapeAndScreenshot(searchResults: SearchQueryResult[]): Promise<ScrapeResult[]> {
   const browser = await puppeteer.launch();
-  const results = [];
+  const results: ScrapeResult[] = [];
 
   for (const result of searchResults) {
     const page = await browser.newPage();
@@ -43,22 +44,20 @@ async function scrapeAndScreenshot(searchResults) {
         link: result.link,
         screenshot: screenshotBuffer,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error processing ${result.link}:`, error);
       results.push({
         id: result.id,
         link: result.link,
         error: error.message,
-      });
+      } as ScrapeResult);
     } finally {
       await page.close();
     }
   }
 
   await browser.close();
-  return results;
+  return results as ScrapeResult[];
 }
 
-module.exports = {
-  scrapeAndScreenshot,
-};
+export { scrapeAndScreenshot, ScrapeResult };
