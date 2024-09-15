@@ -17,7 +17,6 @@ async function clearAPIKeys(secretStorage: vscode.SecretStorage): Promise<void> 
   vscode.window.showInformationMessage('API keys have been cleared.');
 }
 
-
 async function activate(context: vscode.ExtensionContext) {
   console.log('Congratulations, your extension devsearch is now active!');
   outputChannel = vscode.window.createOutputChannel('DevSearch');
