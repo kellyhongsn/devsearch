@@ -307,45 +307,95 @@ class SidePanelViewProvider implements vscode.WebviewViewProvider {
     const nonce = getNonce();
 
     return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <!-- ... -->
-    </head>
-    <body>
-        <input type="text" id="textInput" placeholder="Enter text here">
-        <input type="file" id="fileInput" style="display: none;">
-        <button id="submitButton">Submit</button>
-        <div id="output">output here</div>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevSearch</title>
+    <style>
+        body { 
+            font-family: var(--vscode-font-family);
+            padding: 10px;
+            color: var(--vscode-foreground);
+            background-color: var(--vscode-editor-background);
+        }
+        input[type="text"], button, #fileInputLabel {
+            margin: 5px 0;
+            padding: 5px;
+            width: calc(100% - 10px);
+            background-color: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 1px solid var(--vscode-input-border);
+        }
+        button, #fileInputLabel {
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            cursor: pointer;
+            display: inline-block;
+            text-align: center;
+        }
+        #output {
+            margin-top: 10px;
+            white-space: pre-wrap;
+        }
+        #fileInput {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <input type="text" id="textInput" placeholder="Enter your query">
+    <label for="fileInput" id="fileInputLabel">Choose File</label>
+    <input type="file" id="fileInput">
+    <button id="submitButton">Submit</button>
+    <div id="output"></div>
 
-        <script nonce="${nonce}">
-            const vscode = acquireVsCodeApi();
-            const textInput = document.getElementById('textInput');
-            const fileInput = document.getElementById('fileInput');
-            const submitButton = document.getElementById('submitButton');
-            const output = document.getElementById('output');
+    <script nonce="${nonce}">
+        const vscode = acquireVsCodeApi();
+        const textInput = document.getElementById('textInput');
+        const fileInput = document.getElementById('fileInput');
+        const submitButton = document.getElementById('submitButton');
+        const output = document.getElementById('output');
 
-            submitButton.addEventListener('click', () => {
-                const text = textInput.value;
-                vscode.postMessage({ type: 'textEntered', value: text });
-                console.log('Message sent:', { type: 'textEntered', value: text });
-            });
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    vscode.postMessage({
+                        type: 'fileUploaded',
+                        name: file.name,
+                        content: e.target.result
+                    });
+                };
+                reader.readAsText(file);
+            }
+        });
 
-            window.addEventListener('message', event => {
-              const message = event.data;
-              switch (message.type) {
+        submitButton.addEventListener('click', () => {
+            const text = textInput.value;
+            vscode.postMessage({ type: 'textEntered', value: text });
+            console.log('Message sent:', { type: 'textEntered', value: text });
+        });
+
+        window.addEventListener('message', event => {
+            const message = event.data;
+            switch (message.type) {
                 case 'output':
-                  const p = document.createElement('p');
-                  p.textContent = message.message;
-                  output.appendChild(p);
-                  console.log('Output message displayed:', message.message);
-                  break;
+                    const p = document.createElement('p');
+                    p.textContent = message.message;
+                    output.appendChild(p);
+                    console.log('Output message displayed:', message.message);
+                    break;
                 default:
-                  console.log('Unknown message type from extension:', message.type);
-              }
-            });
-        </script>
-    </body>
-    </html>`;
+                    console.log('Unknown message type from extension:', message.type);
+            }
+        });
+    </script>
+</body>
+</html>
+    `;
   }
 }
 
