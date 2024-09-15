@@ -388,15 +388,15 @@ class SidePanelViewProvider implements vscode.WebviewViewProvider {
                           appendToOutput('Search Results', JSON.stringify(message.data, null, 2));
                           break;
                       case 'screenshots':
-                          sectionDiv = appendToOutput('Screenshots', '');
-                          message.data.forEach(screenshot => {
-                              const img = document.createElement('img');
-                              img.src = 'data:image/png;base64,' + screenshot.image;
-                              img.alt = screenshot.url;
-                              img.className = 'screenshot';
-                              sectionDiv.appendChild(img);
-                          });
-                          break;
+                        sectionDiv = appendToOutput('Screenshots', '');
+                        message.data.forEach(screenshot => {
+                          const img = document.createElement('img');
+                          img.src = 'data:image/png;base64,' + screenshot.screenshot; // Use 'screenshot.screenshot'
+                          img.alt = screenshot.link; // Use 'screenshot.link'
+                          img.className = 'screenshot';
+                          sectionDiv.appendChild(img);
+                        });
+                        break;
                       case 'initialResponse':
                           appendToOutput('Initial Response', message.data);
                           break;
