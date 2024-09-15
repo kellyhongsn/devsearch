@@ -55,7 +55,7 @@ async function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(openSidePanelDisposable);
 
-  await setupAPIKeys(context.secrets);
+  //await setupAPIKeys(context.secrets);
 
   let queryDisposable = vscode.commands.registerCommand('devsearch.query', async () => {
     const editor = vscode.window.activeTextEditor;
@@ -315,7 +315,7 @@ class SidePanelViewProvider implements vscode.WebviewViewProvider {
         <input type="text" id="textInput" placeholder="Enter text here">
         <input type="file" id="fileInput" style="display: none;">
         <button id="submitButton">Submit</button>
-        <div id="output"></div>
+        <div id="output">output here</div>
 
         <script nonce="${nonce}">
             const vscode = acquireVsCodeApi();
