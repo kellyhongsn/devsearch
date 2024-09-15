@@ -1,14 +1,19 @@
 {
   "compilerOptions": {
-    "module": "Node16",
+    "module": "CommonJS",
     "target": "ES2022",
     "outDir": "out",
     "lib": ["ES2022"],
     "sourceMap": true,
-    "rootDir": "src",
+    "rootDir": ".",
     "strict": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "types": ["mocha", "sinon", "node"],
+    "paths": {
+      "vscode": ["./test/vscode.mock"]
+    }
   },
-  "include": ["src"],
+  "include": ["src", "test"],
   "exclude": ["node_modules", "out"]
 }
