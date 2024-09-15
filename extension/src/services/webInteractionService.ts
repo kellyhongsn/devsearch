@@ -6,78 +6,121 @@ import { ExtensionContext } from 'vscode';
 import { ScrapeResult } from './scrapeService.js';
 import * as cheerio from 'cheerio';
 
+interface ClickableElement {
+  tag: string;
+  text: string;
+  href?: string;
+  baseUrl: string;
+}
+
 async function performWebAction(
   context: ExtensionContext,
-  url: string,
-  query: string
-): Promise<ScrapeResult> {
+  screenshots: ScrapeResult[],
+  queries: string[]
+): Promise<ScrapeResult[]> {
   const apiKey = await context.secrets.get('OPENAI_API_KEY');
   const client = new OpenAI({
     apiKey: apiKey,
   });
 
   try {
-    // Fetch the HTML content of the page
-    const response = await axios.get(url);
-    const html = response.data;
+    // Extract clickable elements from all screenshots
+    const allClickableElements = await extractAllClickableElements(screenshots);
 
-    // Use GPT-4 to find the relevant link
-    const linkUrl = await findLinkWithGPT(html, query, client, url);
+    // Find relevant links for all queries concurrently
+    const relevantLinksPromises = queries.map(query => 
+      findLinkWithGPT(allClickableElements, query, client)
+    );
+    const relevantLinks = await Promise.all(relevantLinksPromises);
 
-    if (!linkUrl) {
-      throw new Error('No relevant link found');
-    }
+    // Filter out any null results
+    const validLinks = relevantLinks.filter((link): link is string => link !== null);
 
-    // Construct the full URL if it's a relative link
-    const fullUrl = new URL(linkUrl, url).href;
+    // Scrape and screenshot the relevant links
+    const newScreenshots = await scrapeAndScreenshot(
+      validLinks.map((link, index) => ({ id: index + 1, link, title: '', text: '' }))
+    );
 
-    // Use scrapeAndScreenshot to get the screenshot
-    const screenshot = await scrapeAndScreenshot([{ id: 1, link: fullUrl, title: '', text: '' }]);
-
-    return {
-      link: fullUrl,
-      screenshot: screenshot[0].screenshot,
-    };
+    return newScreenshots;
   } catch (error) {
     console.error('Error during web interaction:', error);
     throw error;
   }
 }
 
-async function findLinkWithGPT(html: string, query: string, client: OpenAI, baseUrl: string): Promise<string> {
-  const $ = cheerio.load(html);
-  const clickableElements = extractClickableElements($);
+async function extractAllClickableElements(screenshots: ScrapeResult[]): Promise<ClickableElement[]> {
+  const allElements: ClickableElement[] = [];
 
+  for (const screenshot of screenshots) {
+    try {
+      const response = await axios.get(screenshot.link);
+      const html = response.data;
+      const $ = cheerio.load(html);
+      const elements = extractClickableElements($, screenshot.link);
+      allElements.push(...elements);
+    } catch (error) {
+      console.error(`Error fetching HTML for ${screenshot.link}:`, error);
+    }
+  }
+
+  return allElements;
+}
+
+function truncateText(text: string, maxLength: number = 50): string {
+  return text.length > maxLength ? text.slice(0, maxLength) + '...' : text;
+}
+
+function removeDuplicates(elements: ClickableElement[]): ClickableElement[] {
+  const seen = new Set();
+  return elements.filter(el => {
+    const key = `${el.tag}|${el.text}|${el.href}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function findLinkWithGPT(
+  elements: ClickableElement[],
+  query: string,
+  client: OpenAI
+): Promise<string | null> {
+  const simplifiedElements = elements
+    .map(({ tag, text, href, baseUrl }) => ({ tag, text: truncateText(text), href, baseUrl }))
+    .filter(el => el.text.trim() !== '' && (el.href === undefined || el.href.trim() !== ''));
+
+  const deduplicatedElements = removeDuplicates(simplifiedElements);
+  
   const prompt = `Given the following clickable HTML elements and user query, find the most relevant link (href attribute) that matches the query. Only return the href value, nothing else. This can be a full URL or a relative URL.
 
-  Clickable Elements:
-  ${JSON.stringify(clickableElements, null, 2)}
+Clickable Elements:
+${JSON.stringify(deduplicatedElements.map(({tag, text, href}) => ({tag, text, href})), null, 2)}
 
 
-  User Query: ${query}
+User Query: ${query}
 
-  Relevant href:`;
+Relevant URL:`;
 
   const response = await client.chat.completions.create({
     model: 'gpt-4o',
     messages: [{ role: 'user', content: prompt }],
     max_tokens: 100,
-    temperature: 0,
+    temperature: .2,
   });
 
-  console.log(response.choices[0]);
 
   // Clean up the URL
   let url = response.choices[0].message.content?.trim() || '';
   url = url.replace(/^["']|["']$/g, ''); // Remove leading and trailing quotes
   url = url.replace(/\\"/g, ''); // Remove escaped quotes
 
+  // Validate and resolve URLs
   try {
-    url = new URL(url, baseUrl).href;
+    return new URL(url, elements[0].baseUrl).href;
   } catch (_) {
-    throw new Error('GPT did not return a valid URL');
+    console.error(`Invalid URL for query "${query}": ${url}`);
+    return null;
   }
-  return url;
 }
 
 function parseAction(actionString: string): string {
@@ -85,8 +128,8 @@ function parseAction(actionString: string): string {
   return actionString;
 }
 
-function extractClickableElements($: cheerio.CheerioAPI): Array<{ tag: string, text: string, href?: string }> {
-  const elements: Array<{ tag: string, text: string, href?: string }> = [];
+function extractClickableElements($: cheerio.CheerioAPI, baseUrl: string): ClickableElement[] {
+  const elements: ClickableElement[] = [];
 
   $('a, button, [role="button"], [type="submit"]').each((_, element) => {
     const $el = $(element);
@@ -94,9 +137,9 @@ function extractClickableElements($: cheerio.CheerioAPI): Array<{ tag: string, t
     const text = $el.text().trim();
     const href = $el.attr('href');
 
-    elements.push({ tag, text, ...(href && { href }) });
+    elements.push({ tag, text, ...(href && { href }), baseUrl });
   });
-
+  console.log(`Extracted elements: ${JSON.stringify(elements, null, 2)}`);
   return elements;
 }
 

@@ -32,78 +32,104 @@ const url_1 = require("url");
 const scrapeService_js_1 = require("./scrapeService.js");
 const axios_1 = __importDefault(require("axios"));
 const cheerio = __importStar(require("cheerio"));
-async function performWebAction(context, url, query) {
+async function performWebAction(context, screenshots, queries) {
     const apiKey = await context.secrets.get('OPENAI_API_KEY');
     const client = new openai_1.OpenAI({
         apiKey: apiKey,
     });
     try {
-        // Fetch the HTML content of the page
-        const response = await axios_1.default.get(url);
-        const html = response.data;
-        // Use GPT-4 to find the relevant link
-        const linkUrl = await findLinkWithGPT(html, query, client, url);
-        if (!linkUrl) {
-            throw new Error('No relevant link found');
-        }
-        // Construct the full URL if it's a relative link
-        const fullUrl = new url_1.URL(linkUrl, url).href;
-        // Use scrapeAndScreenshot to get the screenshot
-        const screenshot = await (0, scrapeService_js_1.scrapeAndScreenshot)([{ id: 1, link: fullUrl, title: '', text: '' }]);
-        return {
-            link: fullUrl,
-            screenshot: screenshot[0].screenshot,
-        };
+        // Extract clickable elements from all screenshots
+        const allClickableElements = await extractAllClickableElements(screenshots);
+        // Find relevant links for all queries concurrently
+        const relevantLinksPromises = queries.map(query => findLinkWithGPT(allClickableElements, query, client));
+        const relevantLinks = await Promise.all(relevantLinksPromises);
+        // Filter out any null results
+        const validLinks = relevantLinks.filter((link) => link !== null);
+        // Scrape and screenshot the relevant links
+        const newScreenshots = await (0, scrapeService_js_1.scrapeAndScreenshot)(validLinks.map((link, index) => ({ id: index + 1, link, title: '', text: '' })));
+        return newScreenshots;
     }
     catch (error) {
         console.error('Error during web interaction:', error);
         throw error;
     }
 }
-async function findLinkWithGPT(html, query, client, baseUrl) {
-    const $ = cheerio.load(html);
-    const clickableElements = extractClickableElements($);
+async function extractAllClickableElements(screenshots) {
+    const allElements = [];
+    for (const screenshot of screenshots) {
+        try {
+            const response = await axios_1.default.get(screenshot.link);
+            const html = response.data;
+            const $ = cheerio.load(html);
+            const elements = extractClickableElements($, screenshot.link);
+            allElements.push(...elements);
+        }
+        catch (error) {
+            console.error(`Error fetching HTML for ${screenshot.link}:`, error);
+        }
+    }
+    return allElements;
+}
+function truncateText(text, maxLength = 50) {
+    return text.length > maxLength ? text.slice(0, maxLength) + '...' : text;
+}
+function removeDuplicates(elements) {
+    const seen = new Set();
+    return elements.filter(el => {
+        const key = `${el.tag}|${el.text}|${el.href}`;
+        if (seen.has(key))
+            return false;
+        seen.add(key);
+        return true;
+    });
+}
+async function findLinkWithGPT(elements, query, client) {
+    const simplifiedElements = elements
+        .map(({ tag, text, href, baseUrl }) => ({ tag, text: truncateText(text), href, baseUrl }))
+        .filter(el => el.text.trim() !== '' && (el.href === undefined || el.href.trim() !== ''));
+    const deduplicatedElements = removeDuplicates(simplifiedElements);
     const prompt = `Given the following clickable HTML elements and user query, find the most relevant link (href attribute) that matches the query. Only return the href value, nothing else. This can be a full URL or a relative URL.
 
-  Clickable Elements:
-  ${JSON.stringify(clickableElements, null, 2)}
+Clickable Elements:
+${JSON.stringify(deduplicatedElements.map(({ tag, text, href }) => ({ tag, text, href })), null, 2)}
 
 
-  User Query: ${query}
+User Query: ${query}
 
-  Relevant href:`;
+Relevant URL:`;
     const response = await client.chat.completions.create({
         model: 'gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 100,
-        temperature: 0,
+        temperature: .2,
     });
-    console.log(response.choices[0]);
     // Clean up the URL
     let url = response.choices[0].message.content?.trim() || '';
     url = url.replace(/^["']|["']$/g, ''); // Remove leading and trailing quotes
     url = url.replace(/\\"/g, ''); // Remove escaped quotes
+    // Validate and resolve URLs
     try {
-        url = new url_1.URL(url, baseUrl).href;
+        return new url_1.URL(url, elements[0].baseUrl).href;
     }
     catch (_) {
-        throw new Error('GPT did not return a valid URL');
+        console.error(`Invalid URL for query "${query}": ${url}`);
+        return null;
     }
-    return url;
 }
 function parseAction(actionString) {
     // This function is no longer needed, but kept for backwards compatibility
     return actionString;
 }
-function extractClickableElements($) {
+function extractClickableElements($, baseUrl) {
     const elements = [];
     $('a, button, [role="button"], [type="submit"]').each((_, element) => {
         const $el = $(element);
         const tag = element.tagName.toLowerCase();
         const text = $el.text().trim();
         const href = $el.attr('href');
-        elements.push({ tag, text, ...(href && { href }) });
+        elements.push({ tag, text, ...(href && { href }), baseUrl });
     });
+    console.log(`Extracted elements: ${JSON.stringify(elements, null, 2)}`);
     return elements;
 }
 //# sourceMappingURL=webInteractionService.js.map
