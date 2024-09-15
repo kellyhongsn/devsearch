@@ -107,28 +107,6 @@ async function activate(context) {
     });
     context.subscriptions.push(queryDisposable);
 }
-async function setupAPIKeys(secretStorage) {
-    const apiKeys = ['OPENAI_API_KEY', 'SERPER_API_KEY', 'EXA_API_KEY'];
-    for (const key of apiKeys) {
-        let value = await secretStorage.get(key);
-        // Loop until the user provides a valid input for each key
-        while (!value) {
-            value = await vscode.window.showInputBox({
-                prompt: `Enter your ${key}`,
-                password: true,
-                ignoreFocusOut: true, // Ensure the input box doesn't close when clicked outside
-            });
-            if (value) {
-                await secretStorage.store(key, value);
-                vscode.window.showInformationMessage(`${key} saved successfully!`);
-            }
-            else {
-                // If the user cancels or doesn't input a value, show an error and re-prompt
-                vscode.window.showErrorMessage(`${key} is required. Please enter a valid ${key}.`);
-            }
-        }
-    }
-}
 async function analyzeCode(context, query, uploadedFile) {
     let files;
     if (uploadedFile) {
@@ -184,25 +162,32 @@ async function processQuery(context, query, uploadedFile, sendMessage) {
         vscode.window.showErrorMessage('No active editor or uploaded file!');
         return;
     }
-    const output = sendMessage ? sendMessage : (msg) => outputChannel.appendLine(msg);
-    output(`Processing query: ${query}`);
+    const output = sendMessage ? sendMessage : (msg) => outputChannel.appendLine(JSON.stringify(msg));
+    output({ type: 'status', message: `Processing query: ${query}` });
     try {
-        output('Analyzing code and performing web search...');
+        output({ type: 'status', message: 'Analyzing code and performing web search...' });
         const [analysis, searchResults] = await Promise.all([
             analyzeCode(context, query, uploadedFile),
             performWebSearch(context, query),
         ]);
-        output('Getting screenshots...');
+        output({ type: 'codeAnalysis', data: analysis });
+        output({ type: 'searchResults', data: searchResults });
+        output({ type: 'status', message: 'Getting screenshots...' });
         const screenshots = await getScreenshots(searchResults);
-        output('Querying LLM for initial response...');
+        output({ type: 'screenshots', data: screenshots });
+        output({ type: 'status', message: 'Querying LLM for initial response...' });
         const { queryResponse, extractedActions } = await queryLLM(context, query, analysis, screenshots);
-        output('Performing extracted actions...');
+        output({ type: 'initialResponse', data: queryResponse });
+        output({ type: 'extractedActions', data: extractedActions });
+        output({ type: 'status', message: 'Performing extracted actions...' });
         const newScreenshots = await performActions(context, extractedActions);
-        output('Querying LLM for final response...');
+        output({ type: 'newScreenshots', data: newScreenshots });
+        output({ type: 'status', message: 'Querying LLM for final response...' });
         const finalResponse = await queryLLM(context, query, analysis, newScreenshots, queryResponse);
-        output(`Final Response: ${finalResponse.queryResponse}`);
+        output({ type: 'finalResponse', data: finalResponse.queryResponse });
     }
     catch (error) {
+        output({ type: 'error', message: `Error: ${error.message}` });
         vscode.window.showErrorMessage(`Error: ${error.message}`);
     }
 }
@@ -236,8 +221,8 @@ class SidePanelViewProvider {
         console.log(`_handleTextEntered called with text: ${text}`);
         try {
             await processQuery(this._context, text, this._uploadedFile, (message) => {
-                console.log(`processQuery output: ${message}`);
-                this._sendMessageToWebview({ type: 'output', message });
+                console.log(`processQuery output: ${JSON.stringify(message)}`);
+                this._sendMessageToWebview(message); // Send message directly
             });
         }
         catch (error) {
@@ -257,94 +242,161 @@ class SidePanelViewProvider {
     _getHtmlForWebview(webview) {
         const nonce = getNonce();
         return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DevSearch</title>
-    <style>
-        body { 
-            font-family: var(--vscode-font-family);
-            padding: 10px;
-            color: var(--vscode-foreground);
-            background-color: var(--vscode-editor-background);
-        }
-        input[type="text"], button, #fileInputLabel {
-            margin: 5px 0;
-            padding: 5px;
-            width: calc(100% - 10px);
-            background-color: var(--vscode-input-background);
-            color: var(--vscode-input-foreground);
-            border: 1px solid var(--vscode-input-border);
-        }
-        button, #fileInputLabel {
-            background-color: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-            border: none;
-            cursor: pointer;
-            display: inline-block;
-            text-align: center;
-        }
-        #output {
-            margin-top: 10px;
-            white-space: pre-wrap;
-        }
-        #fileInput {
-            display: none;
-        }
-    </style>
-</head>
-<body>
-    <input type="text" id="textInput" placeholder="Enter your query">
-    <label for="fileInput" id="fileInputLabel">Choose File</label>
-    <input type="file" id="fileInput">
-    <button id="submitButton">Submit</button>
-    <div id="output"></div>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>DevSearch</title>
+          <style>
+              body { 
+                  font-family: var(--vscode-font-family);
+                  padding: 10px;
+                  color: var(--vscode-foreground);
+                  background-color: var(--vscode-editor-background);
+              }
+              input[type="text"], button, #fileInputLabel {
+                  margin: 5px 0;
+                  padding: 5px;
+                  width: calc(100% - 10px);
+                  background-color: var(--vscode-input-background);
+                  color: var(--vscode-input-foreground);
+                  border: 1px solid var(--vscode-input-border);
+              }
+              button, #fileInputLabel {
+                  background-color: var(--vscode-button-background);
+                  color: var(--vscode-button-foreground);
+                  border: none;
+                  cursor: pointer;
+                  display: inline-block;
+                  text-align: center;
+              }
+              #output {
+                  margin-top: 10px;
+                  white-space: pre-wrap;
+              }
+              #fileInput {
+                  display: none;
+              }
+              .section {
+                  margin-top: 20px;
+                  border-top: 1px solid var(--vscode-input-border);
+                  padding-top: 10px;
+              }
+              .section-title {
+                  font-weight: bold;
+                  margin-bottom: 5px;
+              }
+              .screenshot {
+                  max-width: 100%;
+                  margin-top: 10px;
+              }
+          </style>
+      </head>
+      <body>
+          <input type="text" id="textInput" placeholder="Enter your query">
+          <label for="fileInput" id="fileInputLabel">Choose File</label>
+          <input type="file" id="fileInput">
+          <button id="submitButton">Submit</button>
+          <div id="output"></div>
 
-    <script nonce="${nonce}">
-        const vscode = acquireVsCodeApi();
-        const textInput = document.getElementById('textInput');
-        const fileInput = document.getElementById('fileInput');
-        const submitButton = document.getElementById('submitButton');
-        const output = document.getElementById('output');
+          <script nonce="${nonce}">
+              const vscode = acquireVsCodeApi();
+              const textInput = document.getElementById('textInput');
+              const fileInput = document.getElementById('fileInput');
+              const submitButton = document.getElementById('submitButton');
+              const output = document.getElementById('output');
 
-        fileInput.addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    vscode.postMessage({
-                        type: 'fileUploaded',
-                        name: file.name,
-                        content: e.target.result
-                    });
-                };
-                reader.readAsText(file);
-            }
-        });
+              fileInput.addEventListener('change', (event) => {
+                  const file = event.target.files[0];
+                  if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (e) => {
+                          vscode.postMessage({
+                              type: 'fileUploaded',
+                              name: file.name,
+                              content: e.target.result
+                          });
+                      };
+                      reader.readAsText(file);
+                  }
+              });
 
-        submitButton.addEventListener('click', () => {
-            const text = textInput.value;
-            vscode.postMessage({ type: 'textEntered', value: text });
-            console.log('Message sent:', { type: 'textEntered', value: text });
-        });
+              submitButton.addEventListener('click', () => {
+                  const text = textInput.value;
+                  vscode.postMessage({ type: 'textEntered', value: text });
+                  output.innerHTML = ''; // Clear previous output
+              });
 
-        window.addEventListener('message', event => {
-            const message = event.data;
-            switch (message.type) {
-                case 'output':
-                    const p = document.createElement('p');
-                    p.textContent = message.message;
-                    output.appendChild(p);
-                    console.log('Output message displayed:', message.message);
-                    break;
-                default:
-                    console.log('Unknown message type from extension:', message.type);
-            }
-        });
-    </script>
-</body>
-</html>
+              window.addEventListener('message', event => {
+                  const message = event.data;
+                  let sectionDiv;
+                  switch (message.type) {
+                      case 'status':
+                          appendToOutput('Status', message.message);
+                          break;
+                      case 'codeAnalysis':
+                          appendToOutput('Code Analysis', JSON.stringify(message.data, null, 2));
+                          break;
+                      case 'searchResults':
+                          appendToOutput('Search Results', JSON.stringify(message.data, null, 2));
+                          break;
+                      case 'screenshots':
+                          sectionDiv = appendToOutput('Screenshots', '');
+                          message.data.forEach(screenshot => {
+                              const img = document.createElement('img');
+                              img.src = 'data:image/png;base64,' + screenshot.image;
+                              img.alt = screenshot.url;
+                              img.className = 'screenshot';
+                              sectionDiv.appendChild(img);
+                          });
+                          break;
+                      case 'initialResponse':
+                          appendToOutput('Initial Response', message.data);
+                          break;
+                      case 'extractedActions':
+                          appendToOutput('Extracted Actions', message.data);
+                          break;
+                      case 'newScreenshots':
+                          sectionDiv = appendToOutput('New Screenshots', '');
+                          message.data.forEach(screenshot => {
+                              const img = document.createElement('img');
+                              img.src = 'data:image/png;base64,' + screenshot.image;
+                              img.alt = screenshot.url;
+                              img.className = 'screenshot';
+                              sectionDiv.appendChild(img);
+                          });
+                          break;
+                      case 'finalResponse':
+                          appendToOutput('Final Response', message.data);
+                          break;
+                      case 'error':
+                          appendToOutput('Error', message.message, true);
+                          break;
+                      default:
+                          console.log('Unknown message type from extension:', message.type);
+                  }
+              });
+
+              function appendToOutput(title, content, isError = false) {
+                  const sectionDiv = document.createElement('div');
+                  sectionDiv.className = 'section';
+                  if (isError) sectionDiv.style.color = 'red';
+
+                  const titleDiv = document.createElement('div');
+                  titleDiv.className = 'section-title';
+                  titleDiv.textContent = title;
+                  sectionDiv.appendChild(titleDiv);
+
+                  const contentDiv = document.createElement('div');
+                  contentDiv.textContent = content;
+                  sectionDiv.appendChild(contentDiv);
+
+                  output.appendChild(sectionDiv);
+                  return sectionDiv;
+              }
+          </script>
+      </body>
+      </html>
     `;
     }
 }

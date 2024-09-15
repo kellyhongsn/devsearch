@@ -7,15 +7,18 @@ exports.scrapeAndScreenshot = scrapeAndScreenshot;
 const puppeteer_1 = __importDefault(require("puppeteer"));
 //takes in searchResults array, gets the links, and takes screenshot of entire page
 async function scrapeAndScreenshot(searchResults) {
-    const browser = await puppeteer_1.default.launch();
+    const browser = await puppeteer_1.default.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
     const results = [];
     for (const result of searchResults) {
+        console.log(`Processing URL: ${result.link}`);
         const page = await browser.newPage();
         try {
-            // Set only the viewport width
             await page.setViewport({
-                width: 1920, // Set to a common large screen width
-                height: 1080, // This height will be ignored for fullPage screenshots
+                width: 1920,
+                height: 1080,
                 deviceScaleFactor: 1,
             });
             await page.goto(result.link, {
@@ -34,11 +37,6 @@ async function scrapeAndScreenshot(searchResults) {
         }
         catch (error) {
             console.error(`Error processing ${result.link}:`, error);
-            results.push({
-                id: result.id,
-                link: result.link,
-                error: error.message,
-            });
         }
         finally {
             await page.close();
