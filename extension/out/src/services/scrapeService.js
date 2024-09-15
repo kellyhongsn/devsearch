@@ -23,7 +23,7 @@ async function scrapeAndScreenshot(searchResults) {
             });
             await page.goto(result.link, {
                 waitUntil: 'networkidle0',
-                timeout: 30000,
+                timeout: 50000,
             });
             const screenshotBuffer = await page.screenshot({
                 fullPage: true,

@@ -1,8 +1,10 @@
 import { OpenAI } from 'openai';
+import { URL } from 'url';
 import { scrapeAndScreenshot } from './scrapeService.js';
 import axios from 'axios';
 import { ExtensionContext } from 'vscode';
 import { ScrapeResult } from './scrapeService.js';
+import * as cheerio from 'cheerio';
 
 async function performWebAction(
   context: ExtensionContext,
@@ -20,7 +22,7 @@ async function performWebAction(
     const html = response.data;
 
     // Use GPT-4 to find the relevant link
-    const linkUrl = await findLinkWithGPT(html, query, client);
+    const linkUrl = await findLinkWithGPT(html, query, client, url);
 
     if (!linkUrl) {
       throw new Error('No relevant link found');
@@ -42,11 +44,15 @@ async function performWebAction(
   }
 }
 
-async function findLinkWithGPT(html: string, query: string, client: OpenAI): Promise<string> {
-  const prompt = `Given the following HTML and user query, find the most relevant link (href attribute) that matches the query. Only return the href value, nothing else.
+async function findLinkWithGPT(html: string, query: string, client: OpenAI, baseUrl: string): Promise<string> {
+  const $ = cheerio.load(html);
+  const clickableElements = extractClickableElements($);
 
-  HTML:
-  ${html}
+  const prompt = `Given the following clickable HTML elements and user query, find the most relevant link (href attribute) that matches the query. Only return the href value, nothing else. This can be a full URL or a relative URL.
+
+  Clickable Elements:
+  ${JSON.stringify(clickableElements, null, 2)}
+
 
   User Query: ${query}
 
@@ -66,12 +72,32 @@ async function findLinkWithGPT(html: string, query: string, client: OpenAI): Pro
   url = url.replace(/^["']|["']$/g, ''); // Remove leading and trailing quotes
   url = url.replace(/\\"/g, ''); // Remove escaped quotes
 
+  try {
+    url = new URL(url, baseUrl).href;
+  } catch (_) {
+    throw new Error('GPT did not return a valid URL');
+  }
   return url;
 }
 
 function parseAction(actionString: string): string {
   // This function is no longer needed, but kept for backwards compatibility
   return actionString;
+}
+
+function extractClickableElements($: cheerio.CheerioAPI): Array<{ tag: string, text: string, href?: string }> {
+  const elements: Array<{ tag: string, text: string, href?: string }> = [];
+
+  $('a, button, [role="button"], [type="submit"]').each((_, element) => {
+    const $el = $(element);
+    const tag = element.tagName.toLowerCase();
+    const text = $el.text().trim();
+    const href = $el.attr('href');
+
+    elements.push({ tag, text, ...(href && { href }) });
+  });
+
+  return elements;
 }
 
 export { performWebAction };

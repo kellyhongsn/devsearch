@@ -80,6 +80,7 @@
   "dependencies": {
     "@types/vscode": "^1.93.0",
     "axios": "^1.7.7",
+    "cheerio": "^1.0.0",
     "exa-js": "^1.0.14",
     "openai": "^4.58.1",
     "puppeteer": "^23.3.0",

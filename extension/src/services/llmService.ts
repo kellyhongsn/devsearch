@@ -94,7 +94,7 @@ in either the query or the current code, for example, deploying the code, migrat
 a new feature, etc. Also consider what packages/dependencies the code may be using and how \
 this may be relevant to the user's query. For example, packages that can be used together \
 or if specific versions would be required. Include any code snippets that would be relevant to the \
-user's query.",
+user's query. Do not add information that you are not sure is verifiably correct.",
   });
 
   let output = '';
