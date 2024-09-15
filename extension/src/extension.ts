@@ -89,7 +89,7 @@ async function activate(context: vscode.ExtensionContext) {
       );
 
       // Step 4: Perform extracted actions
-      const newScreenshots = await performActions(context, extractedActions);
+      const newScreenshots = await performActions(context, extractedActions, searchResults);
 
       // Step 5: Final LLM query with new context
       const finalResponse = await queryLLM(context, query, analysis, newScreenshots, queryResponse);
@@ -154,19 +154,12 @@ async function queryLLM(
 
 async function performActions(
   context: vscode.ExtensionContext,
-  actions: string
+  extractedActions: string,
+  screenshots: any[]
 ): Promise<ScrapeResult[]> {
-  const actionList = actions.split('\n');
-  const screenshots: ScrapeResult[] = [];
-
-  for (const action of actionList) {
-    if (action.trim()) {
-      const result = await performWebAction(context, '', action);
-      screenshots.push(result);
-    }
-  }
-
-  return screenshots;
+  const queries = extractedActions.split('\n').filter(action => action.trim());
+  const newScreenshots = await performWebAction(context, screenshots, queries);
+  return newScreenshots;
 }
 
 async function processQuery(
@@ -210,7 +203,7 @@ async function processQuery(
     output({ type: 'extractedActions', data: extractedActions });
 
     output({ type: 'status', message: 'Performing extracted actions...' });
-    const newScreenshots = await performActions(context, extractedActions);
+    const newScreenshots = await performActions(context, extractedActions, screenshots);
     output({ type: 'newScreenshots', data: newScreenshots });
 
     output({ type: 'status', message: 'Querying LLM for final response...' });

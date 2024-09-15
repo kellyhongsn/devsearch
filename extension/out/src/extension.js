@@ -95,7 +95,7 @@ async function activate(context) {
             // Step 3: Query LLM for initial response
             const { queryResponse, extractedActions } = await queryLLM(context, query, analysis, screenshots);
             // Step 4: Perform extracted actions
-            const newScreenshots = await performActions(context, extractedActions);
+            const newScreenshots = await performActions(context, extractedActions, searchResults);
             // Step 5: Final LLM query with new context
             const finalResponse = await queryLLM(context, query, analysis, newScreenshots, queryResponse);
             // Display final response
@@ -144,16 +144,10 @@ async function getScreenshots(searchResults) {
 async function queryLLM(context, query, analysis, screenshots, initialResponse = null) {
     return (0, llmService_1.queryLLMResponse)(context, query, analysis, screenshots, initialResponse);
 }
-async function performActions(context, actions) {
-    const actionList = actions.split('\n');
-    const screenshots = [];
-    for (const action of actionList) {
-        if (action.trim()) {
-            const result = await (0, webInteractionService_1.performWebAction)(context, '', action);
-            screenshots.push(result);
-        }
-    }
-    return screenshots;
+async function performActions(context, extractedActions, screenshots) {
+    const queries = extractedActions.split('\n').filter(action => action.trim());
+    const newScreenshots = await (0, webInteractionService_1.performWebAction)(context, screenshots, queries);
+    return newScreenshots;
 }
 async function processQuery(context, query, uploadedFile, sendMessage) {
     console.log('processQuery called with query:', query);
@@ -180,7 +174,7 @@ async function processQuery(context, query, uploadedFile, sendMessage) {
         output({ type: 'initialResponse', data: queryResponse });
         output({ type: 'extractedActions', data: extractedActions });
         output({ type: 'status', message: 'Performing extracted actions...' });
-        const newScreenshots = await performActions(context, extractedActions);
+        const newScreenshots = await performActions(context, extractedActions, screenshots);
         output({ type: 'newScreenshots', data: newScreenshots });
         output({ type: 'status', message: 'Querying LLM for final response...' });
         const finalResponse = await queryLLM(context, query, analysis, newScreenshots, queryResponse);
